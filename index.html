@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Bridges Caddie" />
+  <title>Bridges Caddie</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <h1>Bridges Caddie</h1>
+        <p>The Bridges at Beresford • GPS to center of green</p>
+      </div>
+      <button id="settingsBtn" class="ghost-btn" aria-label="Open settings">⚙️</button>
+    </header>
+
+    <section class="card hero">
+      <div class="hero-head">
+        <div>
+          <div class="label">Current hole</div>
+          <div id="holeName" class="hole-name">Hole 1</div>
+        </div>
+        <div class="nav-row">
+          <button id="prevHoleBtn" class="nav-btn">◀</button>
+          <button id="nextHoleBtn" class="nav-btn">▶</button>
+        </div>
+      </div>
+
+      <div class="yardage-wrap">
+        <div id="yardage" class="yardage">--</div>
+        <div class="yardage-unit">yards to center</div>
+      </div>
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="label">Par</span>
+          <strong id="par">4</strong>
+        </div>
+        <div class="meta-item">
+          <span class="label">Handicap</span>
+          <strong id="hcp">1</strong>
+        </div>
+        <div class="meta-item wide">
+          <span class="label">GPS status</span>
+          <strong id="gpsStatus">Waiting for location…</strong>
+        </div>
+      </div>
+
+      <div class="button-row">
+        <button id="locateBtn" class="primary-btn">Update yardage</button>
+        <button id="markGreenBtn" class="secondary-btn">Set center from my location</button>
+      </div>
+      <p id="notice" class="notice"></p>
+    </section>
+
+    <section class="card holes-card">
+      <div class="section-title">Hole select</div>
+      <div id="holesGrid" class="holes-grid"></div>
+    </section>
+
+    <section class="card info-card">
+      <div class="section-title">How this works</div>
+      <p>This version is built for GitHub Pages and iPhone Home Screen use. The exact center point for each green can be saved once while you stand near the middle of that green, then it will stay stored on your phone.</p>
+      <p class="tiny">Tip: walk to the center of each green once during a practice round and tap <strong>Set center from my location</strong> for that hole.</p>
+    </section>
+  </main>
+
+  <aside id="settingsPanel" class="settings-panel hidden">
+    <div class="settings-inner">
+      <div class="settings-top">
+        <h2>Course setup</h2>
+        <button id="closeSettingsBtn" class="ghost-btn">✕</button>
+      </div>
+      <p class="tiny">Green centers are saved only in your browser on this iPhone.</p>
+      <div id="settingsList" class="settings-list"></div>
+      <div class="settings-actions">
+        <button id="exportBtn" class="secondary-btn">Export saved points</button>
+        <button id="resetBtn" class="danger-btn">Reset all points</button>
+      </div>
+      <textarea id="exportBox" class="export-box" placeholder="Exported points appear here"></textarea>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
