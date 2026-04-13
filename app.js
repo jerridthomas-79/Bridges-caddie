@@ -105,16 +105,103 @@ function requestLocation({ onSuccess, onError }) {
   );
 }
 
+// ============ KML PARSING & TEE AREA DETECTION ============
+
+// Store parsed tee areas in memory
+let teeAreas = [];
+
+// Parse Coursemap.kml and extract tee area boundaries
+async function loadTeeAreas() {
+  try {
+    const response = await fetch('./Coursemap.kml');
+    const kmlText = await response.text();
+    const parser = new DOMParser();
+    const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
+    
+    // Find all Placemarks with "Tee Area" in their name
+    const placemarks = kmlDoc.querySelectorAll('Placemark');
+    
+    placemarks.forEach(placemark => {
+      const name = placemark.querySelector('name')?.textContent || '';
+      const match = name.match(/Hole (\d+) - Tee Area/);
+      
+      if (match) {
+        const holeNum = parseInt(match[1]);
+        const polygon = placemark.querySelector('Polygon');
+        
+        if (polygon) {
+          const coordsText = polygon.querySelector('coordinates')?.textContent || '';
+          const coordinates = coordsText
+            .trim()
+            .split(/\s+/)
+            .filter(coord => coord.length > 0)
+            .map(coord => {
+              const [lng, lat] = coord.split(',').map(Number);
+              return { lng, lat };
+            });
+          
+          if (coordinates.length >= 3) {
+            teeAreas.push({
+              holeNum,
+              coordinates
+            });
+          }
+        }
+      }
+    });
+    
+    console.log('Loaded tee areas:', teeAreas);
+  } catch (error) {
+    console.error('Error loading tee areas:', error);
+  }
+}
+
+// Ray casting algorithm for point-in-polygon detection
+function isPointInPolygon(point, polygon) {
+  const { lng: x, lat: y } = point;
+  let inside = false;
+  
+  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
+    const xi = polygon[i].lng;
+    const yi = polygon[i].lat;
+    const xj = polygon[j].lng;
+    const yj = polygon[j].lat;
+    
+    const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  
+  return inside;
+}
+
+// Detect which hole the GPS position is in
+function detectHoleFromPosition(position) {
+  for (const teeArea of teeAreas) {
+    if (isPointInPolygon(position, teeArea.coordinates)) {
+      return teeArea.holeNum;
+    }
+  }
+  return null;
+}
+
 function updateYardage() {
   showNotice('');
   gpsStatusEl.textContent = 'Reading GPS…';
   requestLocation({
     onSuccess(position) {
       gpsStatusEl.textContent = `Accuracy about ${Math.round(position.accuracy)} ft`;
+      
+      // AUTO-DETECT HOLE FROM GPS
+      const detectedHole = detectHoleFromPosition(position);
+      if (detectedHole !== null) {
+        state.currentHole = detectedHole;
+        render();
+      }
+      
       const center = getCenterForHole(state.currentHole);
       if (!center) {
         yardageEl.textContent = '--';
-        showNotice('No center point saved yet for this hole. Stand on the green and tap “Set center from my location.”');
+        showNotice('No center point saved yet for this hole. Stand on the green and tap "Set center from my location."');
         return;
       }
       yardageEl.textContent = distanceInYards(position, center);
@@ -130,6 +217,12 @@ function markGreenCenter() {
   showNotice('');
   requestLocation({
     onSuccess(position) {
+      // AUTO-DETECT HOLE FROM GPS
+      const detectedHole = detectHoleFromPosition(position);
+      if (detectedHole !== null) {
+        state.currentHole = detectedHole;
+      }
+      
       state.savedCenters[String(state.currentHole)] = { lat: position.lat, lng: position.lng };
       saveCenters();
       gpsStatusEl.textContent = `Saved with accuracy about ${Math.round(position.accuracy)} ft`;
@@ -221,141 +314,6 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// ============ KML PARSING & TEE AREA DETECTION ============
-
-// Store parsed tee areas in memory
-let teeAreas = [];
-
-// Parse Coursemap.kml and extract tee area boundaries
-async function loadTeeAreas() {
-  try {
-    const response = await fetch('./Coursemap.kml');
-    const kmlText = await response.text();
-    const parser = new DOMParser();
-    const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
-    
-    // Find all Placemarks with "Tee Area" in their name
-    const placemarks = kmlDoc.querySelectorAll('Placemark');
-    
-    placemarks.forEach(placemark => {
-      const name = placemark.querySelector('name')?.textContent || '';
-      const match = name.match(/Hole (\d+) - Tee Area/);
-      
-      if (match) {
-        const holeNum = parseInt(match[1]);
-        const polygon = placemark.querySelector('Polygon');
-        
-        if (polygon) {
-          const coordsText = polygon.querySelector('coordinates')?.textContent || '';
-          const coordinates = coordsText
-            .trim()
-            .split(/\s+/)
-            .filter(coord => coord.length > 0)
-            .map(coord => {
-              const [lng, lat] = coord.split(',').map(Number);
-              return { lng, lat };
-            });
-          
-          if (coordinates.length >= 3) {
-            teeAreas.push({
-              holeNum,
-              coordinates
-            });
-          }
-        }
-      }
-    });
-    
-    console.log('Loaded tee areas:', teeAreas);
-  } catch (error) {
-    console.error('Error loading tee areas:', error);
-  }
-}
-
-// Ray casting algorithm for point-in-polygon detection
-function isPointInPolygon(point, polygon) {
-  const { lng: x, lat: y } = point;
-  let inside = false;
-  
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].lng;
-    const yi = polygon[i].lat;
-    const xj = polygon[j].lng;
-    const yj = polygon[j].lat;
-    
-    const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
-  }
-  
-  return inside;
-}
-
-// Detect which hole the GPS position is in
-function detectHoleFromPosition(position) {
-  for (const teeArea of teeAreas) {
-    if (isPointInPolygon(position, teeArea.coordinates)) {
-      return teeArea.holeNum;
-    }
-  }
-  return null;
-}
-
-// ============ MODIFIED FUNCTIONS ============
-
-function updateYardage() {
-  showNotice('');
-  gpsStatusEl.textContent = 'Reading GPS…';
-  requestLocation({
-    onSuccess(position) {
-      gpsStatusEl.textContent = `Accuracy about ${Math.round(position.accuracy)} ft`;
-      
-      // AUTO-DETECT HOLE FROM GPS
-      const detectedHole = detectHoleFromPosition(position);
-      if (detectedHole !== null) {
-        state.currentHole = detectedHole;
-        render();
-      }
-      
-      const center = getCenterForHole(state.currentHole);
-      if (!center) {
-        yardageEl.textContent = '--';
-        showNotice('No center point saved yet for this hole. Stand on the green and tap "Set center from my location."');
-        return;
-      }
-      yardageEl.textContent = distanceInYards(position, center);
-    },
-    onError(message) {
-      gpsStatusEl.textContent = message;
-      showNotice('Turn on iPhone Location Services and allow Safari/Home Screen access.');
-    }
-  });
-}
-
-function markGreenCenter() {
-  showNotice('');
-  requestLocation({
-    onSuccess(position) {
-      // AUTO-DETECT HOLE FROM GPS
-      const detectedHole = detectHoleFromPosition(position);
-      if (detectedHole !== null) {
-        state.currentHole = detectedHole;
-      }
-      
-      state.savedCenters[String(state.currentHole)] = { lat: position.lat, lng: position.lng };
-      saveCenters();
-      gpsStatusEl.textContent = `Saved with accuracy about ${Math.round(position.accuracy)} ft`;
-      showNotice(`Hole ${state.currentHole} center saved on this iPhone.`);
-      updateYardage();
-      renderSettings();
-    },
-    onError(message) {
-      gpsStatusEl.textContent = message;
-      showNotice('Could not save center point.');
-    }
-  });
-}
-
-// ============ INITIALIZATION ============
 // Load tee areas when page loads
 loadTeeAreas();
 
