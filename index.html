@@ -14,7 +14,8 @@
 <body>
   <main class="app-shell">
     <header class="topbar">
-      <div>
+      <img src="https://beresfordbridges.com/wp-content/uploads/sites/108/2025/04/logo.png" alt="Beresford Bridges Logo" class="course-logo">
+      <div class="header-text">
         <h1>Bridges Caddie</h1>
         <p>The Bridges at Beresford • GPS to center of green</p>
       </div>
@@ -55,16 +56,45 @@
 
       <div class="button-row">
         <button id="locateBtn" class="primary-btn">Update yardage</button>
-        <button id="markGreenBtn" class="secondary-btn">Set center from my location</button>
       </div>
       <p id="notice" class="notice"></p>
     </section>
+
+    <section id="pinsDisplay" class="card pins-card"></section>
+
+    <section id="additionalLocations" class="card locations-card"></section>
 
     <section class="card holes-card">
       <div class="section-title">Hole select</div>
       <div id="holesGrid" class="holes-grid"></div>
     </section>
 
+    <section class="card info-card">
+      <div class="section-title">How this works</div>
+      <p>This version is built for GitHub Pages and iPhone Home Screen use. All hole distances are automatically loaded from the course map. Your location updates every minute automatically.</p>
+      <p class="tiny">Tip: Stand on the course and the app will automatically detect which hole you're on!</p>
+    </section>
+  </main>
+
+  <aside id="settingsPanel" class="settings-panel hidden">
+    <div class="settings-inner">
+      <div class="settings-top">
+        <h2>Course setup</h2>
+        <button id="closeSettingsBtn" class="ghost-btn">✕</button>
+      </div>
+      <p class="tiny">Green centers are loaded from the course map.</p>
+      <div id="settingsList" class="settings-list"></div>
+      <div class="settings-actions">
+        <button id="exportBtn" class="secondary-btn">Export saved points</button>
+        <button id="resetBtn" class="danger-btn">Reset all points</button>
+      </div>
+      <textarea id="exportBox" class="export-box" placeholder="Exported points appear here"></textarea>
+    </div>
+  </aside>
+
+  <script src="app.js"></script>
+</body>
+</html>
     <section class="card info-card">
       <div class="section-title">How this works</div>
       <p>This version is built for GitHub Pages and iPhone Home Screen use. The exact center point for each green can be saved once while you stand near the middle of that green, then it will stay stored on your phone.</p>
