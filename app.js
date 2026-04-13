@@ -261,6 +261,9 @@ function updatePinYardages(position) {
   if (!pins) return;
   
   pins.forEach(pin => {
+    // Skip the Middle pin - it's displayed at the top
+    if (pin.type === 'Middle') return;
+    
     const pinId = `pin-${pin.type.toLowerCase().replace(/\s+/g, '-')}`;
     const pinEl = document.getElementById(pinId);
     if (pinEl) {
@@ -309,10 +312,18 @@ function renderPinsDisplay() {
     return;
   }
   
-  pinsDisplayEl.innerHTML = pins.map(pin => {
+  // Filter out Middle pin and display only other pins
+  const otherPins = pins.filter(pin => pin.type !== 'Middle');
+  
+  if (otherPins.length === 0) {
+    pinsDisplayEl.innerHTML = '';
+    return;
+  }
+  
+  pinsDisplayEl.innerHTML = otherPins.map(pin => {
     const pinId = `pin-${pin.type.toLowerCase().replace(/\s+/g, '-')}`;
     return `
-      <div class="pin-card ${pin.type === 'Middle' ? 'middle-pin' : ''}">
+      <div class="pin-card">
         <div class="pin-label">${pin.type}</div>
         <div class="pin-yardage" id="${pinId}">--</div>
         <div class="pin-yards-label">yds</div>
