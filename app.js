@@ -15,6 +15,7 @@ const holes = [
 let state = {
   currentHole: 1,
   lastPosition: null,
+  atClubhouse: false,
 };
 
 const holeNameEl = document.getElementById('holeName');
@@ -34,6 +35,9 @@ let pinLocations = {};
 
 // Store additional locations (hazards, water, etc.)
 let additionalLocations = {};
+
+// Store clubhouse boundary
+let clubhouseBoundary = null;
 
 function showNotice(msg) {
   noticeEl.textContent = msg || '';
@@ -123,7 +127,7 @@ const additionalLocationConfig = {
   ]
 };
 
-// Parse Coursemap.kml and extract tee area boundaries, pin locations, and additional locations
+// Parse Coursemap.kml and extract tee area boundaries, pin locations, additional locations, and clubhouse
 async function loadKMLData() {
   try {
     const response = await fetch('./Coursemap.kml');
@@ -136,6 +140,26 @@ async function loadKMLData() {
     placemarks.forEach(placemark => {
       const name = placemark.querySelector('name')?.textContent || '';
       const description = placemark.querySelector('description')?.textContent || '';
+      
+      // Extract clubhouse boundary
+      if (name === 'Clubhouse') {
+        const polygon = placemark.querySelector('Polygon');
+        if (polygon) {
+          const coordsText = polygon.querySelector('coordinates')?.textContent || '';
+          const coordinates = coordsText
+            .trim()
+            .split(/\s+/)
+            .filter(coord => coord.length > 0)
+            .map(coord => {
+              const [lng, lat] = coord.split(',').map(Number);
+              return { lng, lat };
+            });
+          
+          if (coordinates.length >= 3) {
+            clubhouseBoundary = coordinates;
+          }
+        }
+      }
       
       // Extract tee areas
       const teeMatch = name.match(/Hole (\d+) - Tee Area/);
@@ -234,6 +258,7 @@ async function loadKMLData() {
       });
     });
     
+    console.log('Loaded clubhouse boundary:', clubhouseBoundary);
     console.log('Loaded tee areas:', teeAreas);
     console.log('Loaded pin locations:', pinLocations);
     console.log('Loaded additional locations:', additionalLocations);
@@ -261,6 +286,12 @@ function isPointInPolygon(point, polygon) {
   return inside;
 }
 
+// Detect if GPS is at the clubhouse
+function detectClubhouse(position) {
+  if (!clubhouseBoundary) return false;
+  return isPointInPolygon(position, clubhouseBoundary);
+}
+
 // Detect which hole the GPS position is in
 function detectHoleFromPosition(position) {
   for (const teeArea of teeAreas) {
@@ -285,6 +316,15 @@ function updateYardage() {
   requestLocation({
     onSuccess(position) {
       gpsStatusEl.textContent = `Accuracy about ${Math.round(position.accuracy)} ft`;
+      
+      // Check if at clubhouse first
+      if (detectClubhouse(position)) {
+        state.atClubhouse = true;
+        render();
+        return;
+      }
+      
+      state.atClubhouse = false;
       
       // AUTO-DETECT HOLE FROM GPS
       const detectedHole = detectHoleFromPosition(position);
@@ -427,7 +467,23 @@ function renderAdditionalLocationsDisplay() {
   `;
 }
 
+function renderClubhouse() {
+  holeNameEl.textContent = 'Time for a Drink and a Snack 🍺🌭';
+  yardageEl.textContent = '';
+  parEl.textContent = '';
+  hcpEl.textContent = '';
+  pinsDisplayEl.innerHTML = '';
+  additionalLocationsEl.innerHTML = '';
+}
+
 function render() {
+  if (state.atClubhouse) {
+    renderClubhouse();
+    renderHoles();
+    renderSettings();
+    return;
+  }
+  
   const hole = getHole();
   holeNameEl.textContent = `Hole ${hole.num}`;
   parEl.textContent = hole.par;
@@ -464,315 +520,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Load KML data (tee areas, pin locations, and additional locations)
-loadKMLData();
-
-render();
-updateYardage();
-// ============ MATH UTILITIES ============
-
-function toRadians(value) {
-  return value * Math.PI / 180;
-}
-
-function distanceInYards(a, b) {
-  const R = 6371000;
-  const dLat = toRadians(b.lat - a.lat);
-  const dLon = toRadians(b.lng - a.lng);
-  const lat1 = toRadians(a.lat);
-  const lat2 = toRadians(b.lat);
-
-  const sinLat = Math.sin(dLat / 2);
-  const sinLon = Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(
-    Math.sqrt(sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon),
-    Math.sqrt(1 - (sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon))
-  );
-  const meters = R * c;
-  return Math.round(meters * 1.09361);
-}
-
-// ============ KML PARSING & TEE AREA DETECTION ============
-
-// Store parsed tee areas in memory
-let teeAreas = [];
-
-// Parse Coursemap.kml and extract tee area boundaries and pin locations
-async function loadKMLData() {
-  try {
-    const response = await fetch('./Coursemap.kml');
-    const kmlText = await response.text();
-    const parser = new DOMParser();
-    const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
-    
-    const placemarks = kmlDoc.querySelectorAll('Placemark');
-    
-    placemarks.forEach(placemark => {
-      const name = placemark.querySelector('name')?.textContent || '';
-      const description = placemark.querySelector('description')?.textContent || '';
-      
-      // Extract tee areas
-      const teeMatch = name.match(/Hole (\d+) - Tee Area/);
-      if (teeMatch) {
-        const holeNum = parseInt(teeMatch[1]);
-        const polygon = placemark.querySelector('Polygon');
-        
-        if (polygon) {
-          const coordsText = polygon.querySelector('coordinates')?.textContent || '';
-          const coordinates = coordsText
-            .trim()
-            .split(/\s+/)
-            .filter(coord => coord.length > 0)
-            .map(coord => {
-              const [lng, lat] = coord.split(',').map(Number);
-              return { lng, lat };
-            });
-          
-          if (coordinates.length >= 3) {
-            teeAreas.push({
-              holeNum,
-              coordinates
-            });
-          }
-        }
-      }
-      
-      // Extract pin locations
-      const pinMatch = name.match(/Hole (\d+) - Pin - (.+)/) || 
-                       (description.includes('Hole') && description.match(/Hole (\d+) - Pin - (.+)/));
-      
-      if (pinMatch) {
-        const holeNum = parseInt(pinMatch[1]);
-        const pinType = pinMatch[2];
-        const point = placemark.querySelector('Point');
-        
-        if (point) {
-          const coordsText = point.querySelector('coordinates')?.textContent || '';
-          const [lng, lat] = coordsText.trim().split(',').map(Number);
-          
-          // Initialize pin locations array for this hole if not exists
-          if (!pinLocations[holeNum]) {
-            pinLocations[holeNum] = [];
-          }
-          
-          // Add pin location
-          pinLocations[holeNum].push({
-            type: pinType,
-            lat,
-            lng
-          });
-          
-          // If it's the middle pin, set it as the default center
-          if (pinType === 'Middle') {
-            const hole = holes.find(h => h.num === holeNum);
-            if (hole) {
-              hole.defaultCenter = { lat, lng };
-            }
-          }
-        }
-      }
-    });
-    
-    // Sort pins for each hole by type for consistent display
-    Object.keys(pinLocations).forEach(holeNum => {
-      pinLocations[holeNum].sort((a, b) => {
-        // Put Middle first
-        if (a.type === 'Middle') return -1;
-        if (b.type === 'Middle') return 1;
-        // Then alphabetical
-        return a.type.localeCompare(b.type);
-      });
-    });
-    
-    console.log('Loaded tee areas:', teeAreas);
-    console.log('Loaded pin locations:', pinLocations);
-    console.log('Loaded default centers:', holes);
-  } catch (error) {
-    console.error('Error loading KML data:', error);
-  }
-}
-
-// Ray casting algorithm for point-in-polygon detection
-function isPointInPolygon(point, polygon) {
-  const { lng: x, lat: y } = point;
-  let inside = false;
-  
-  for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
-    const xi = polygon[i].lng;
-    const yi = polygon[i].lat;
-    const xj = polygon[j].lng;
-    const yj = polygon[j].lat;
-    
-    const intersect = ((yi > y) !== (yj > y)) && (x < ((xj - xi) * (y - yi)) / (yj - yi) + xi);
-    if (intersect) inside = !inside;
-  }
-  
-  return inside;
-}
-
-// Detect which hole the GPS position is in
-function detectHoleFromPosition(position) {
-  for (const teeArea of teeAreas) {
-    if (isPointInPolygon(position, teeArea.coordinates)) {
-      return teeArea.holeNum;
-    }
-  }
-  return null;
-}
-
-function getHole() {
-  return holes.find(h => h.num === state.currentHole);
-}
-
-function getCenterForHole(holeNum) {
-  return holes.find(h => h.num === holeNum)?.defaultCenter || null;
-}
-
-function updateYardage() {
-  showNotice('');
-  gpsStatusEl.textContent = 'Reading GPS…';
-  requestLocation({
-    onSuccess(position) {
-      gpsStatusEl.textContent = `Accuracy about ${Math.round(position.accuracy)} ft`;
-      
-      // AUTO-DETECT HOLE FROM GPS
-      const detectedHole = detectHoleFromPosition(position);
-      if (detectedHole !== null) {
-        state.currentHole = detectedHole;
-        render();
-      }
-      
-      const center = getCenterForHole(state.currentHole);
-      if (!center) {
-        yardageEl.textContent = '--';
-        showNotice('No center pin found for this hole.');
-        return;
-      }
-      yardageEl.textContent = distanceInYards(position, center);
-      
-      // Update yardages to all pin locations
-      updatePinYardages(position);
-    },
-    onError(message) {
-      gpsStatusEl.textContent = message;
-      showNotice('Turn on iPhone Location Services and allow Safari/Home Screen access.');
-    }
-  });
-}
-
-function updatePinYardages(position) {
-  const pins = pinLocations[state.currentHole];
-  if (!pins) return;
-  
-  pins.forEach(pin => {
-    // Skip the Middle pin - it's displayed at the top
-    if (pin.type === 'Middle') return;
-    
-    const pinId = `pin-${pin.type.toLowerCase().replace(/\s+/g, '-')}`;
-    const pinEl = document.getElementById(pinId);
-    if (pinEl) {
-      const yardage = distanceInYards(position, pin);
-      pinEl.textContent = yardage;
-    }
-  });
-}
-
-function renderHoles() {
-  holesGridEl.innerHTML = '';
-  holes.forEach(hole => {
-    const btn = document.createElement('button');
-    btn.className = 'hole-chip' + (hole.num === state.currentHole ? ' active' : '');
-    const hasCenter = !!getCenterForHole(hole.num);
-    btn.innerHTML = `Hole ${hole.num}<small>Par ${hole.par} • ${hasCenter ? 'mapped' : 'not mapped'}</small>`;
-    btn.addEventListener('click', () => {
-      state.currentHole = hole.num;
-      render();
-      updateYardage();
-    });
-    holesGridEl.appendChild(btn);
-  });
-}
-
-function renderSettings() {
-  settingsListEl.innerHTML = '';
-  holes.forEach(hole => {
-    const row = document.createElement('div');
-    row.className = 'setting-row';
-    const center = getCenterForHole(hole.num);
-    row.innerHTML = `
-      <strong>Hole ${hole.num}</strong><br>
-      <span class="tiny">${center ? `<code>${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}</code>` : 'No center pin found'}</span>
-    `;
-    settingsListEl.appendChild(row);
-  });
-}
-
-function renderPinsDisplay() {
-  if (!pinsDisplayEl) return;
-  
-  const pins = pinLocations[state.currentHole];
-  if (!pins) {
-    pinsDisplayEl.innerHTML = '';
-    return;
-  }
-  
-  // Filter out Middle pin and display only other pins
-  const otherPins = pins.filter(pin => pin.type !== 'Middle');
-  
-  if (otherPins.length === 0) {
-    pinsDisplayEl.innerHTML = '';
-    return;
-  }
-  
-  pinsDisplayEl.innerHTML = otherPins.map(pin => {
-    const pinId = `pin-${pin.type.toLowerCase().replace(/\s+/g, '-')}`;
-    return `
-      <div class="pin-card">
-        <div class="pin-label">${pin.type}</div>
-        <div class="pin-yardage" id="${pinId}">--</div>
-        <div class="pin-yards-label">yds</div>
-      </div>
-    `;
-  }).join('');
-}
-
-function render() {
-  const hole = getHole();
-  holeNameEl.textContent = `Hole ${hole.num}`;
-  parEl.textContent = hole.par;
-  hcpEl.textContent = hole.hcp;
-  const center = getCenterForHole(hole.num);
-  if (!center) {
-    yardageEl.textContent = '--';
-  }
-  renderHoles();
-  renderSettings();
-  renderPinsDisplay();
-}
-
-document.getElementById('prevHoleBtn').addEventListener('click', () => {
-  state.currentHole = state.currentHole === 1 ? 9 : state.currentHole - 1;
-  render();
-  updateYardage();
-});
-
-document.getElementById('nextHoleBtn').addEventListener('click', () => {
-  state.currentHole = state.currentHole === 9 ? 1 : state.currentHole + 1;
-  render();
-  updateYardage();
-});
-
-document.getElementById('locateBtn').addEventListener('click', updateYardage);
-document.getElementById('settingsBtn').addEventListener('click', () => settingsPanelEl.classList.remove('hidden'));
-document.getElementById('closeSettingsBtn').addEventListener('click', () => settingsPanelEl.classList.add('hidden'));
-
-if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {});
-  });
-}
-
-// Load KML data (tee areas and pin locations)
+// Load KML data (tee areas, pin locations, additional locations, and clubhouse)
 loadKMLData();
 
 render();
