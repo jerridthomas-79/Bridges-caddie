@@ -39,6 +39,10 @@ let additionalLocations = {};
 // Store clubhouse boundary
 let clubhouseBoundary = null;
 
+// Auto-update interval
+let autoUpdateInterval = null;
+const AUTO_UPDATE_INTERVAL = 60000; // 1 minute in milliseconds
+
 function showNotice(msg) {
   noticeEl.textContent = msg || '';
 }
@@ -315,7 +319,7 @@ function updateYardage() {
   gpsStatusEl.textContent = 'Reading GPS…';
   requestLocation({
     onSuccess(position) {
-      gpsStatusEl.textContent = `Accuracy about ${Math.round(position.accuracy)} ft`;
+      gpsStatusEl.textContent = `Accuracy about ${Math.round(position.accuracy)} ft • Auto-updating`;
       
       // Check if at clubhouse first
       if (detectClubhouse(position)) {
@@ -383,6 +387,26 @@ function updateAdditionalLocationYardages(position) {
       locationEl.textContent = yardage;
     }
   });
+}
+
+function startAutoUpdate() {
+  // Update immediately
+  updateYardage();
+  
+  // Then update every 1 minute
+  autoUpdateInterval = setInterval(() => {
+    updateYardage();
+  }, AUTO_UPDATE_INTERVAL);
+  
+  console.log('Auto-update started: GPS will refresh every 1 minute');
+}
+
+function stopAutoUpdate() {
+  if (autoUpdateInterval) {
+    clearInterval(autoUpdateInterval);
+    autoUpdateInterval = null;
+    console.log('Auto-update stopped');
+  }
 }
 
 function renderHoles() {
@@ -524,4 +548,6 @@ if ('serviceWorker' in navigator) {
 loadKMLData();
 
 render();
-updateYardage();
+
+// Start auto-updating GPS every 1 minute
+startAutoUpdate();
