@@ -29,6 +29,9 @@ const settingsPanelEl = document.getElementById('settingsPanel');
 const settingsListEl = document.getElementById('settingsList');
 const exportBoxEl = document.getElementById('exportBox');
 
+// Store all pin locations for each hole
+let pinLocations = {};
+
 function loadSavedCenters() {
   try {
     return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
@@ -110,7 +113,7 @@ function requestLocation({ onSuccess, onError }) {
 // Store parsed tee areas in memory
 let teeAreas = [];
 
-// Parse Coursemap.kml and extract tee area boundaries and pin centers
+// Parse Coursemap.kml and extract tee area boundaries, pin centers, and all pin locations
 async function loadKMLData() {
   try {
     const response = await fetch('./Coursemap.kml');
@@ -149,26 +152,42 @@ async function loadKMLData() {
         }
       }
       
-      // Extract pin middle positions and set as default centers
-      const pinMatch = name.match(/Hole (\d+) - Pin - Middle/);
+      // Extract pin locations (both middle and others)
+      const pinMatch = name.match(/Hole (\d+) - Pin - (.+)/);
       if (pinMatch) {
         const holeNum = parseInt(pinMatch[1]);
+        const pinType = pinMatch[2];
         const point = placemark.querySelector('Point');
         
         if (point) {
           const coordsText = point.querySelector('coordinates')?.textContent || '';
           const [lng, lat] = coordsText.trim().split(',').map(Number);
           
-          // Find the hole and set its default center
-          const hole = holes.find(h => h.num === holeNum);
-          if (hole) {
-            hole.defaultCenter = { lat, lng };
+          // Initialize pin locations array for this hole if not exists
+          if (!pinLocations[holeNum]) {
+            pinLocations[holeNum] = [];
+          }
+          
+          // Add pin location
+          pinLocations[holeNum].push({
+            type: pinType,
+            lat,
+            lng
+          });
+          
+          // If it's the middle pin, set it as the default center
+          if (pinType === 'Middle') {
+            const hole = holes.find(h => h.num === holeNum);
+            if (hole) {
+              hole.defaultCenter = { lat, lng };
+            }
           }
         }
       }
     });
     
     console.log('Loaded tee areas:', teeAreas);
+    console.log('Loaded pin locations:', pinLocations);
     console.log('Loaded default centers:', holes);
   } catch (error) {
     console.error('Error loading KML data:', error);
@@ -224,10 +243,28 @@ function updateYardage() {
         return;
       }
       yardageEl.textContent = distanceInYards(position, center);
+      
+      // Update yardages to other pin locations
+      updatePinYardages(position);
     },
     onError(message) {
       gpsStatusEl.textContent = message;
       showNotice('Turn on iPhone Location Services and allow Safari/Home Screen access.');
+    }
+  });
+}
+
+function updatePinYardages(position) {
+  const pins = pinLocations[state.currentHole];
+  if (!pins) return;
+  
+  pins.forEach(pin => {
+    if (pin.type !== 'Middle') {
+      const yardageEl = document.getElementById(`pin-${pin.type.replace(/\s+/g, '-')}`);
+      if (yardageEl) {
+        const yardage = distanceInYards(position, pin);
+        yardageEl.textContent = yardage;
+      }
     }
   });
 }
@@ -286,6 +323,27 @@ function renderSettings() {
   });
 }
 
+function renderPinDisplay() {
+  const pinDisplayEl = document.getElementById('pinDisplay');
+  if (!pinDisplayEl) return;
+  
+  const pins = pinLocations[state.currentHole];
+  if (!pins || pins.length <= 1) {
+    pinDisplayEl.innerHTML = '';
+    return;
+  }
+  
+  // Filter out the "Middle" pin and display others
+  const otherPins = pins.filter(pin => pin.type !== 'Middle');
+  
+  pinDisplayEl.innerHTML = otherPins.map(pin => `
+    <div class="pin-yardage">
+      <div class="pin-label">${pin.type}</div>
+      <div class="pin-yardage-value" id="pin-${pin.type.replace(/\s+/g, '-')}">--</div>
+    </div>
+  `).join('');
+}
+
 function render() {
   const hole = getHole();
   holeNameEl.textContent = `Hole ${hole.num}`;
@@ -296,6 +354,7 @@ function render() {
   }
   renderHoles();
   renderSettings();
+  renderPinDisplay();
 }
 
 document.getElementById('prevHoleBtn').addEventListener('click', () => {
