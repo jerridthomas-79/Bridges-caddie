@@ -14,7 +14,6 @@ const holes = [
 
 let state = {
   currentHole: 1,
-  savedCenters: loadSavedCenters(),
   lastPosition: null,
 };
 
@@ -27,52 +26,10 @@ const noticeEl = document.getElementById('notice');
 const holesGridEl = document.getElementById('holesGrid');
 const settingsPanelEl = document.getElementById('settingsPanel');
 const settingsListEl = document.getElementById('settingsList');
-const exportBoxEl = document.getElementById('exportBox');
+const pinsDisplayEl = document.getElementById('pinsDisplay');
 
 // Store all pin locations for each hole
 let pinLocations = {};
-
-function loadSavedCenters() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-  } catch {
-    return {};
-  }
-}
-
-function saveCenters() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(state.savedCenters));
-  render();
-}
-
-function getHole() {
-  return holes.find(h => h.num === state.currentHole);
-}
-
-function getCenterForHole(holeNum) {
-  return state.savedCenters[String(holeNum)] || holes.find(h => h.num === holeNum)?.defaultCenter || null;
-}
-
-function toRadians(value) {
-  return value * Math.PI / 180;
-}
-
-function distanceInYards(a, b) {
-  const R = 6371000;
-  const dLat = toRadians(b.lat - a.lat);
-  const dLon = toRadians(b.lng - a.lng);
-  const lat1 = toRadians(a.lat);
-  const lat2 = toRadians(b.lat);
-
-  const sinLat = Math.sin(dLat / 2);
-  const sinLon = Math.sin(dLon / 2);
-  const c = 2 * Math.atan2(
-    Math.sqrt(sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon),
-    Math.sqrt(1 - (sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon))
-  );
-  const meters = R * c;
-  return Math.round(meters * 1.09361);
-}
 
 function showNotice(msg) {
   noticeEl.textContent = msg || '';
@@ -108,12 +65,35 @@ function requestLocation({ onSuccess, onError }) {
   );
 }
 
+// ============ MATH UTILITIES ============
+
+function toRadians(value) {
+  return value * Math.PI / 180;
+}
+
+function distanceInYards(a, b) {
+  const R = 6371000;
+  const dLat = toRadians(b.lat - a.lat);
+  const dLon = toRadians(b.lng - a.lng);
+  const lat1 = toRadians(a.lat);
+  const lat2 = toRadians(b.lat);
+
+  const sinLat = Math.sin(dLat / 2);
+  const sinLon = Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(
+    Math.sqrt(sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon),
+    Math.sqrt(1 - (sinLat * sinLat + Math.cos(lat1) * Math.cos(lat2) * sinLon * sinLon))
+  );
+  const meters = R * c;
+  return Math.round(meters * 1.09361);
+}
+
 // ============ KML PARSING & TEE AREA DETECTION ============
 
 // Store parsed tee areas in memory
 let teeAreas = [];
 
-// Parse Coursemap.kml and extract tee area boundaries, pin centers, and all pin locations
+// Parse Coursemap.kml and extract tee area boundaries and pin locations
 async function loadKMLData() {
   try {
     const response = await fetch('./Coursemap.kml');
@@ -125,6 +105,7 @@ async function loadKMLData() {
     
     placemarks.forEach(placemark => {
       const name = placemark.querySelector('name')?.textContent || '';
+      const description = placemark.querySelector('description')?.textContent || '';
       
       // Extract tee areas
       const teeMatch = name.match(/Hole (\d+) - Tee Area/);
@@ -152,8 +133,10 @@ async function loadKMLData() {
         }
       }
       
-      // Extract pin locations (both middle and others)
-      const pinMatch = name.match(/Hole (\d+) - Pin - (.+)/);
+      // Extract pin locations
+      const pinMatch = name.match(/Hole (\d+) - Pin - (.+)/) || 
+                       (description.includes('Hole') && description.match(/Hole (\d+) - Pin - (.+)/));
+      
       if (pinMatch) {
         const holeNum = parseInt(pinMatch[1]);
         const pinType = pinMatch[2];
@@ -184,6 +167,17 @@ async function loadKMLData() {
           }
         }
       }
+    });
+    
+    // Sort pins for each hole by type for consistent display
+    Object.keys(pinLocations).forEach(holeNum => {
+      pinLocations[holeNum].sort((a, b) => {
+        // Put Middle first
+        if (a.type === 'Middle') return -1;
+        if (b.type === 'Middle') return 1;
+        // Then alphabetical
+        return a.type.localeCompare(b.type);
+      });
     });
     
     console.log('Loaded tee areas:', teeAreas);
@@ -222,6 +216,14 @@ function detectHoleFromPosition(position) {
   return null;
 }
 
+function getHole() {
+  return holes.find(h => h.num === state.currentHole);
+}
+
+function getCenterForHole(holeNum) {
+  return holes.find(h => h.num === holeNum)?.defaultCenter || null;
+}
+
 function updateYardage() {
   showNotice('');
   gpsStatusEl.textContent = 'Reading GPS…';
@@ -239,12 +241,12 @@ function updateYardage() {
       const center = getCenterForHole(state.currentHole);
       if (!center) {
         yardageEl.textContent = '--';
-        showNotice('No center point saved yet for this hole. Stand on the green and tap "Set center from my location."');
+        showNotice('No center pin found for this hole.');
         return;
       }
       yardageEl.textContent = distanceInYards(position, center);
       
-      // Update yardages to other pin locations
+      // Update yardages to all pin locations
       updatePinYardages(position);
     },
     onError(message) {
@@ -259,36 +261,11 @@ function updatePinYardages(position) {
   if (!pins) return;
   
   pins.forEach(pin => {
-    if (pin.type !== 'Middle') {
-      const yardageEl = document.getElementById(`pin-${pin.type.replace(/\s+/g, '-')}`);
-      if (yardageEl) {
-        const yardage = distanceInYards(position, pin);
-        yardageEl.textContent = yardage;
-      }
-    }
-  });
-}
-
-function markGreenCenter() {
-  showNotice('');
-  requestLocation({
-    onSuccess(position) {
-      // AUTO-DETECT HOLE FROM GPS
-      const detectedHole = detectHoleFromPosition(position);
-      if (detectedHole !== null) {
-        state.currentHole = detectedHole;
-      }
-      
-      state.savedCenters[String(state.currentHole)] = { lat: position.lat, lng: position.lng };
-      saveCenters();
-      gpsStatusEl.textContent = `Saved with accuracy about ${Math.round(position.accuracy)} ft`;
-      showNotice(`Hole ${state.currentHole} center saved on this iPhone.`);
-      updateYardage();
-      renderSettings();
-    },
-    onError(message) {
-      gpsStatusEl.textContent = message;
-      showNotice('Could not save center point.');
+    const pinId = `pin-${pin.type.toLowerCase().replace(/\s+/g, '-')}`;
+    const pinEl = document.getElementById(pinId);
+    if (pinEl) {
+      const yardage = distanceInYards(position, pin);
+      pinEl.textContent = yardage;
     }
   });
 }
@@ -298,8 +275,8 @@ function renderHoles() {
   holes.forEach(hole => {
     const btn = document.createElement('button');
     btn.className = 'hole-chip' + (hole.num === state.currentHole ? ' active' : '');
-    const hasPoint = !!getCenterForHole(hole.num);
-    btn.innerHTML = `Hole ${hole.num}<small>Par ${hole.par} • ${hasPoint ? 'mapped' : 'not mapped'}</small>`;
+    const hasCenter = !!getCenterForHole(hole.num);
+    btn.innerHTML = `Hole ${hole.num}<small>Par ${hole.par} • ${hasCenter ? 'mapped' : 'not mapped'}</small>`;
     btn.addEventListener('click', () => {
       state.currentHole = hole.num;
       render();
@@ -317,31 +294,31 @@ function renderSettings() {
     const center = getCenterForHole(hole.num);
     row.innerHTML = `
       <strong>Hole ${hole.num}</strong><br>
-      <span class="tiny">${center ? `<code>${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}</code>` : 'No point saved yet'}</span>
+      <span class="tiny">${center ? `<code>${center.lat.toFixed(6)}, ${center.lng.toFixed(6)}</code>` : 'No center pin found'}</span>
     `;
     settingsListEl.appendChild(row);
   });
 }
 
-function renderPinDisplay() {
-  const pinDisplayEl = document.getElementById('pinDisplay');
-  if (!pinDisplayEl) return;
+function renderPinsDisplay() {
+  if (!pinsDisplayEl) return;
   
   const pins = pinLocations[state.currentHole];
-  if (!pins || pins.length <= 1) {
-    pinDisplayEl.innerHTML = '';
+  if (!pins) {
+    pinsDisplayEl.innerHTML = '';
     return;
   }
   
-  // Filter out the "Middle" pin and display others
-  const otherPins = pins.filter(pin => pin.type !== 'Middle');
-  
-  pinDisplayEl.innerHTML = otherPins.map(pin => `
-    <div class="pin-yardage">
-      <div class="pin-label">${pin.type}</div>
-      <div class="pin-yardage-value" id="pin-${pin.type.replace(/\s+/g, '-')}">--</div>
-    </div>
-  `).join('');
+  pinsDisplayEl.innerHTML = pins.map(pin => {
+    const pinId = `pin-${pin.type.toLowerCase().replace(/\s+/g, '-')}`;
+    return `
+      <div class="pin-card ${pin.type === 'Middle' ? 'middle-pin' : ''}">
+        <div class="pin-label">${pin.type}</div>
+        <div class="pin-yardage" id="${pinId}">--</div>
+        <div class="pin-yards-label">yds</div>
+      </div>
+    `;
+  }).join('');
 }
 
 function render() {
@@ -349,12 +326,13 @@ function render() {
   holeNameEl.textContent = `Hole ${hole.num}`;
   parEl.textContent = hole.par;
   hcpEl.textContent = hole.hcp;
-  if (!getCenterForHole(hole.num)) {
+  const center = getCenterForHole(hole.num);
+  if (!center) {
     yardageEl.textContent = '--';
   }
   renderHoles();
   renderSettings();
-  renderPinDisplay();
+  renderPinsDisplay();
 }
 
 document.getElementById('prevHoleBtn').addEventListener('click', () => {
@@ -370,21 +348,8 @@ document.getElementById('nextHoleBtn').addEventListener('click', () => {
 });
 
 document.getElementById('locateBtn').addEventListener('click', updateYardage);
-document.getElementById('markGreenBtn').addEventListener('click', markGreenCenter);
 document.getElementById('settingsBtn').addEventListener('click', () => settingsPanelEl.classList.remove('hidden'));
 document.getElementById('closeSettingsBtn').addEventListener('click', () => settingsPanelEl.classList.add('hidden'));
-
-document.getElementById('exportBtn').addEventListener('click', () => {
-  exportBoxEl.value = JSON.stringify(state.savedCenters, null, 2);
-});
-
-document.getElementById('resetBtn').addEventListener('click', () => {
-  if (!confirm('Reset all saved green center points?')) return;
-  state.savedCenters = {};
-  saveCenters();
-  exportBoxEl.value = '';
-  showNotice('All saved points were reset.');
-});
 
 if ('serviceWorker' in navigator) {
   window.addEventListener('load', () => {
@@ -392,7 +357,7 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Load KML data (tee areas and pin centers)
+// Load KML data (tee areas and pin locations)
 loadKMLData();
 
 render();
