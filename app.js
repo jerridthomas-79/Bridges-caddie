@@ -110,23 +110,23 @@ function requestLocation({ onSuccess, onError }) {
 // Store parsed tee areas in memory
 let teeAreas = [];
 
-// Parse Coursemap.kml and extract tee area boundaries
-async function loadTeeAreas() {
+// Parse Coursemap.kml and extract tee area boundaries and pin centers
+async function loadKMLData() {
   try {
     const response = await fetch('./Coursemap.kml');
     const kmlText = await response.text();
     const parser = new DOMParser();
     const kmlDoc = parser.parseFromString(kmlText, 'text/xml');
     
-    // Find all Placemarks with "Tee Area" in their name
     const placemarks = kmlDoc.querySelectorAll('Placemark');
     
     placemarks.forEach(placemark => {
       const name = placemark.querySelector('name')?.textContent || '';
-      const match = name.match(/Hole (\d+) - Tee Area/);
       
-      if (match) {
-        const holeNum = parseInt(match[1]);
+      // Extract tee areas
+      const teeMatch = name.match(/Hole (\d+) - Tee Area/);
+      if (teeMatch) {
+        const holeNum = parseInt(teeMatch[1]);
         const polygon = placemark.querySelector('Polygon');
         
         if (polygon) {
@@ -148,11 +148,30 @@ async function loadTeeAreas() {
           }
         }
       }
+      
+      // Extract pin middle positions and set as default centers
+      const pinMatch = name.match(/Hole (\d+) - Pin - Middle/);
+      if (pinMatch) {
+        const holeNum = parseInt(pinMatch[1]);
+        const point = placemark.querySelector('Point');
+        
+        if (point) {
+          const coordsText = point.querySelector('coordinates')?.textContent || '';
+          const [lng, lat] = coordsText.trim().split(',').map(Number);
+          
+          // Find the hole and set its default center
+          const hole = holes.find(h => h.num === holeNum);
+          if (hole) {
+            hole.defaultCenter = { lat, lng };
+          }
+        }
+      }
     });
     
     console.log('Loaded tee areas:', teeAreas);
+    console.log('Loaded default centers:', holes);
   } catch (error) {
-    console.error('Error loading tee areas:', error);
+    console.error('Error loading KML data:', error);
   }
 }
 
@@ -314,8 +333,8 @@ if ('serviceWorker' in navigator) {
   });
 }
 
-// Load tee areas when page loads
-loadTeeAreas();
+// Load KML data (tee areas and pin centers)
+loadKMLData();
 
 render();
 updateYardage();
