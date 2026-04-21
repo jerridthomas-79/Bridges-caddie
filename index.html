@@ -9,6 +9,9 @@
   <meta name="apple-mobile-web-app-title" content="Bridges Caddie" />
   <title>Bridges Caddie</title>
   <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;700;800;900&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 </head>
 <body>
@@ -83,32 +86,6 @@
         <button id="closeSettingsBtn" class="ghost-btn">✕</button>
       </div>
       <p class="tiny">Green centers are loaded from the course map.</p>
-      <div id="settingsList" class="settings-list"></div>
-      <div class="settings-actions">
-        <button id="exportBtn" class="secondary-btn">Export saved points</button>
-        <button id="resetBtn" class="danger-btn">Reset all points</button>
-      </div>
-      <textarea id="exportBox" class="export-box" placeholder="Exported points appear here"></textarea>
-    </div>
-  </aside>
-
-  <script src="app.js"></script>
-</body>
-</html>
-    <section class="card info-card">
-      <div class="section-title">How this works</div>
-      <p>This version is built for access from GitHub Pages, and designed for iPhone. Saving the Link to your Home Screen will allow you to open as an App.</p>
-      <p class="tiny">Hole detection based on your location will automatically select the appropriate Hole.<br>Distance to Pin locations are automatically updated every minute, and have a margin of error, so if you know you hit your PW exactly 143 yards, and you come up a bit short, don't blame me ;)</p>
-    </section>
-  </main>
-
-  <aside id="settingsPanel" class="settings-panel hidden">
-    <div class="settings-inner">
-      <div class="settings-top">
-        <h2>Course setup</h2>
-        <button id="closeSettingsBtn" class="ghost-btn">✕</button>
-      </div>
-      <p class="tiny">Green centers are saved only in your browser on this iPhone.</p>
       <div id="settingsList" class="settings-list"></div>
       <div class="settings-actions">
         <button id="exportBtn" class="secondary-btn">Export saved points</button>

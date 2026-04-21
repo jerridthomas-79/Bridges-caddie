@@ -556,16 +556,21 @@ function renderPinsDisplay() {
     return;
   }
   
-  pinsDisplayEl.innerHTML = otherPins.map(pin => {
-    const pinId = `pin-${pin.type.toLowerCase().replace(/\s+/g, '-')}`;
-    return `
-      <div class="pin-card">
-        <div class="pin-label">${pin.type}</div>
-        <div class="pin-yardage" id="${pinId}">--</div>
-        <div class="pin-yards-label">yds</div>
-      </div>
-    `;
-  }).join('');
+  pinsDisplayEl.innerHTML = `
+    <div class="section-title">Pin Locations</div>
+    <div class="pins-grid">
+      ${otherPins.map(pin => {
+        const pinId = `pin-${pin.type.toLowerCase().replace(/\s+/g, '-')}`;
+        return `
+          <div class="pin-card">
+            <div class="pin-label">${pin.type}</div>
+            <div class="pin-yardage" id="${pinId}">--</div>
+            <div class="pin-yards-label">yds</div>
+          </div>
+        `;
+      }).join('')}
+    </div>
+  `;
 }
 
 function renderAdditionalLocationsDisplay() {
