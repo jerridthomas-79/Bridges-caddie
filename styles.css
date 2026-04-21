@@ -463,7 +463,7 @@ button { font: inherit; }
     grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
   }
 
-  .pins-card {
+  .pins-grid {
     grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
   }
 }
